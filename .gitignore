@@ -1,0 +1,9 @@
+.zcompdump*
+\#*\#
+*-readme.txt
+*.elc
+recentf
+auto-save-list/
+elpa/archives/
+elpa/gnupg/
+projectile-bookmarks.eld
