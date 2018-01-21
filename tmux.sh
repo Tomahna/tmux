@@ -1,12 +1,7 @@
 #!/bin/sh
 export LC_ALL=en_US.UTF8
 
-# Tmux Helper functions
-_current_path() {
-    tmux display-message -p -F "#{pane_current_path}"
-}
-
-## Git Helper functions
+## Git
 _git_branch() {
     branch=$(git -C $1 rev-parse --abbrev-ref HEAD)
 
@@ -52,60 +47,11 @@ _git_segment() {
     echo "#[fg=colour250,bg=colour236,nobold,noitalics,nounderscore]$branch$dirty $stash"
 }
 
-## Username and Hostname 
-# From https://github.com/gpakosz/.tmux/blob/master/.tmux.conf 
-_hostname() {
-    tty=${1:-$(tmux display -p '#{pane_tty}')}
-    ssh_only=$2
-    # shellcheck disable=SC2039
-    if [ x"$OSTYPE" = x"cygwin" ]; then
-        pid=$(ps -a | awk -v tty="${tty##/dev/}" '$5 == tty && /ssh/ && !/vagrant ssh/ && !/autossh/ && !/-W/ { print $1 }')
-        [ -n "$pid" ] && ssh_parameters=$(tr '\0' ' ' < "/proc/$pid/cmdline" | sed 's/^ssh //')
-    else
-        ssh_parameters=$(ps -t "$tty" -o command= | awk '/ssh/ && !/vagrant ssh/ && !/autossh/ && !/-W/ { $1=""; print $0; exit }')
-    fi
-    if [ -n "$ssh_parameters" ]; then
-        # shellcheck disable=SC2086
-        hostname=$(ssh -G $ssh_parameters 2>/dev/null | awk 'NR > 2 { exit } ; /^hostname / { print $2 }')
-        # shellcheck disable=SC2086
-        [ -z "$hostname" ] && hostname=$(ssh -T -o ControlPath=none -o ProxyCommand="sh -c 'echo %%hostname%% %h >&2'" $ssh_parameters 2>&1 | awk '/^%hostname% / { print $2; exit }')
-        #shellcheck disable=SC1004
-        hostname=$(echo "$hostname" | awk '\
-        { \
-        if ($1~/^[0-9.:]+$/) \
-          print $1; \
-        else \
-          split($1, a, ".") ; print a[1] \
-        }')
-    else
-        hostname=$(command hostname -s)
-    fi
-
-    echo "$hostname"
-}
-
-_username() {
-    tty=${1:-$(tmux display -p '#{pane_tty}')}
-    ssh_only=$2
-    # shellcheck disable=SC2039
-    if [ x"$OSTYPE" = x"cygwin" ]; then
-        pid=$(ps -a | awk -v tty="${tty##/dev/}" '$5 == tty && /ssh/ && !/vagrant ssh/ && !/autossh/ && !/-W/ { print $1 }')
-        [ -n "$pid" ] && ssh_parameters=$(tr '\0' ' ' < "/proc/$pid/cmdline" | sed 's/^ssh //')
-    else
-        ssh_parameters=$(ps -t "$tty" -o command= | awk '/ssh/ && !/vagrant ssh/ && !/autossh/ && !/-W/ { $1=""; print $0; exit }')
-    fi
-    if [ -n "$ssh_parameters" ]; then
-        # shellcheck disable=SC2086
-        username=$(ssh -G $ssh_parameters 2>/dev/null | awk 'NR > 2 { exit } ; /^user / { print $2 }')
-        # shellcheck disable=SC2086
-        [ -z "$username" ] && username=$(ssh -T -o ControlPath=none -o ProxyCommand="sh -c 'echo %%username%% %r >&2'" $ssh_parameters 2>&1 | awk '/^%username% / { print $2; exit }')
-    else
-        if ! _is_enabled "$ssh_only"; then
-            # shellcheck disable=SC2039
-            if [ x"$OSTYPE" = x"cygwin" ]; then
-                username=$(whoami)
-            else
-                username=$(ps -t "$tty" -o user= -o pid= -o ppid= -o command= | awk '
+## Identity 
+_local_user() {
+    tty=$1
+    hostname=$(hostname -s)
+    username=$(ps -t "$tty" -o user= -o pid= -o ppid= -o command= | awk '
            !/ssh/ { user[$2] = $1; ppid[$3] = 1 }
            END {
              for (i in user)
@@ -114,22 +60,32 @@ _username() {
                  print user[i]
                  exit
                }
-           }
-              ')
-            fi
-        fi
+           }')
+    echo "$username@$hostname"
+}
+
+_ssh_user() {
+    tty=$1
+    ssh_parameters=$(ps -t "$tty" -o command= | awk '/ssh/ && !/vagrant ssh/ && !/autossh/ && !/-W/ { $1=""; print $0; exit }')
+    if [ -n "$ssh_parameters" ]; then
+        ssh_config=$(ssh -G $ssh_parameters 2>/dev/null)
+        username=$(echo $ssh_config | awk 'NR > 2 { exit } ; /^user / { print $2 }')
+        hostname=$(echo $ssh_config | awk 'NR > 2 { exit } ; /^hostname / { print $2 }')
+        [ -z "$username" ] && username=$(ssh -T -o ControlPath=none -o ProxyCommand="sh -c 'echo %%username%% %r >&2'" $ssh_parameters 2>&1 | awk '/^%username% / { print $2; exit }')
+        [ -z "$hostname" ] && hostname=$(ssh -T -o ControlPath=none -o ProxyCommand="sh -c 'echo %%hostname%% %h >&2'" $ssh_parameters 2>&1 | awk '/^%hostname% / { print $2; exit }')
     fi
 
-    echo "$username"
+    [ -z != $username ] && [ -z != $hostname ] && echo "$username@$hostname"
 }
 
 _user_segment() {
-    local username=$(_username)
-    local hostname=$(_hostname)
-    echo "#[fg=colour16,bg=colour252,bold,noitalics,nounderscore]  $username@$hostname"
+    tty=${1:-$(tmux display -p '#{pane_tty}')}
+    local user=$(_ssh_user $tty)
+    [ -s $user ] && user=$(_local_user $tty)
+    echo "#[fg=colour16,bg=colour252,bold,noitalics,nounderscore]  $user"
 }
 
-## System Helper functions
+## System
 _system_gradient() {
     if [ $1 -le 50 ]; then
       echo "colour2"; exit 0
@@ -167,6 +123,7 @@ _system_segment(){
 }
 
 case $1 in 
+    INIT_WINDOW) _init_window;;
     GIT_SEGMENT) _git_segment;;
     USER_SEGMENT) _user_segment;;
     SYSTEM_SEGMENT) _system_segment;;
