@@ -8,43 +8,48 @@ _current_path() {
 
 ## Git Helper functions
 _git_branch() {
-    CURRENT_PATH="$(_current_path)"
-    BRANCH=$(git -C $CURRENT_PATH rev-parse --abbrev-ref HEAD)
+    branch=$(git -C $1 rev-parse --abbrev-ref HEAD)
 
     if [ $? -ne 0 ]; then
         exit 0
     fi
-    if [ $BRANCH != "HEAD" ]; then
-        echo "  $BRANCH"
+    if [ $branch != "HEAD" ]; then
+        echo "  $branch"
         exit 0
     fi
     
-    TAG=$(git -C $CURRENT_PATH describe --exact-match --tags)
+    tag=$(git -C $1 describe --exact-match --tags)
     if [ $? -eq 0 ]; then
-        echo "  $TAG"
+        echo "  $tag"
         exit 0
     fi
 
-    REV=$(git -C $CURRENT_PATH rev-parse --short HEAD)
+    rev=$(git -C $1 rev-parse --short HEAD)
     if [ $? -eq 0 ]; then
-        echo "  $REV"
+        echo "  $rev"
         exit 0
     fi
 }
 
 _git_dirty() {
-    CURRENT_PATH="$(_current_path)"
-    STATUS=$(git -C $CURRENT_PATH status --porcelain 2> /dev/null)
+    status=$(git -C $1 status --porcelain 2> /dev/null)
     if [[ "$status" != "" ]]; then
         echo '*'
     fi
 }
 
 _git_stash() {
-    CURRENT_PATH="$(_current_path)"
-    if [ -e "$CURRENT_PATH/.git/refs/stash" ]; then    
-        echo "($(git -C $CURRENT_PATH stash list | wc -l))"
+    if [ -e "$1/.git/refs/stash" ]; then    
+        echo "($(git -C $1 stash list | wc -l))"
     fi
+}
+
+_git_segment() {
+    local current_path=$(tmux display-message -p -F "#{pane_current_path}")
+    local branch=$(_git_branch $current_path)
+    local dirty=$(_git_dirty $current_path)
+    local stash=$(_git_stash $current_path)
+    echo "#[fg=colour250,bg=colour236,nobold,noitalics,nounderscore]$branch$dirty $stash"
 }
 
 ## Username and Hostname 
@@ -73,9 +78,7 @@ _hostname() {
           split($1, a, ".") ; print a[1] \
         }')
     else
-        #if ! _is_enabled "$ssh_only"; then
         hostname=$(command hostname -s)
-        #fi
     fi
 
     echo "$hostname"
@@ -120,6 +123,12 @@ _username() {
     echo "$username"
 }
 
+_user_segment() {
+    local username=$(_username)
+    local hostname=$(_hostname)
+    echo "#[fg=colour16,bg=colour252,bold,noitalics,nounderscore]  $username@$hostname"
+}
+
 ## System Helper functions
 _system_cpu_usage() {
     local CPU_USAGE=$(top -bn 2 -d 0.1 | grep 'Cpu(s)' | tail -n 1 | awk '{print $2+$4+$6}')
@@ -131,14 +140,16 @@ _system_ram_usage() {
     printf "%.f" $MEM_USAGE
 }
 
+_system_segment(){
+    local cpu=$(_system_cpu_usage)
+    local ram=$(_system_ram_usage)
+    echo "#[fg=colour2,bg=colour233,nobold,noitalics,nounderscore] CPU $cpu% RAM $ram%"
+}
+
 case $1 in 
-    GIT_BRANCH) _git_branch;;
-    GIT_DIRTY) _git_dirty;;
-    GIT_STASH) _git_stash;;
-    HOSTNAME) _hostname;;
-    SYS_CPU) _system_cpu_usage;;
-    SYS_RAM) _system_ram_usage;;
-    USERNAME) _username;;
+    GIT_SEGMENT) _git_segment;;
+    USER_SEGMENT) _user_segment;;
+    SYSTEM_SEGMENT) _system_segment;;
     *) echo "undefined";;
 esac
 
