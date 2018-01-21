@@ -130,20 +130,40 @@ _user_segment() {
 }
 
 ## System Helper functions
+_system_gradient() {
+    if [ $1 -le 50 ]; then
+      echo "colour2"; exit 0
+    elif [ $1 -le 80 ]; then
+      echo "colour3"; exit 0
+    else
+      echo "colour1"; exit 0
+    fi
+}
+
 _system_cpu_usage() {
-    local CPU_USAGE=$(top -bn 2 -d 0.1 | grep 'Cpu(s)' | tail -n 1 | awk '{print $2+$4+$6}')
-    printf "%.f" $CPU_USAGE
+    local cpu_usage=$(top -bn 2 -d 0.1 | grep 'Cpu(s)' | tail -n 1 | awk '{print $2+$4+$6}')
+    printf "%.f" $cpu_usage
 }
 
 _system_ram_usage() {
-    local MEM_USAGE=$(free | head -2 | tail -1 | awk '{print ($3*100/$2)}')
-    printf "%.f" $MEM_USAGE
+    local mem_usage=$(free | head -2 | tail -1 | awk '{print ($3*100/$2)}')
+    printf "%.f" $mem_usage
+}
+
+_system_cpu_segment(){
+    local cpu=$(_system_cpu_usage)
+    local colour=$(_system_gradient $cpu)
+    echo "#[fg=$colour,bg=colour233] CPU $cpu%"
+}
+
+_system_ram_segment() {
+    local ram=$(_system_ram_usage)
+    local colour=$(_system_gradient $ram)
+    echo "#[fg=$colour,bg=colour233] RAM $ram%"
 }
 
 _system_segment(){
-    local cpu=$(_system_cpu_usage)
-    local ram=$(_system_ram_usage)
-    echo "#[fg=colour2,bg=colour233,nobold,noitalics,nounderscore] CPU $cpu% RAM $ram%"
+    echo "$(_system_cpu_segment) $(_system_ram_segment)"
 }
 
 case $1 in 
